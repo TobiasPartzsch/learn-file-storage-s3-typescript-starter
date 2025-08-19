@@ -2,6 +2,7 @@ import type { BunRequest } from "bun";
 import { getBearerToken, validateJWT } from "../auth";
 import type { ApiConfig } from "../config";
 import { getVideo, updateVideo } from "../db/videos";
+import { getAssetDiskPath, getAssetURL, mediaTypeToExt } from "./assets";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { respondWithJSON } from "./json";
 
@@ -33,9 +34,10 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError(`thumbnail file is too large (maximum size is ${MAX_UPLOAD_SIZE} bytes)`);
   }
   const mediaType = imageData.type;
-  const buffer = Buffer.from(await imageData.arrayBuffer());
-  const stringData = buffer.toString("base64");
-  const dataURL = `data:${mediaType};base64,${stringData}`;
+  if (!mediaType) {
+    throw new BadRequestError("Missing Content-Type for thumbnail");
+  }
+
   const videoMetadata = getVideo(cfg.db, videoId);
   if (!videoMetadata) {
     throw new NotFoundError("Video not found");
@@ -43,7 +45,15 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   if (videoMetadata?.userID !== userID) {
     throw new UserForbiddenError("creator of the video isn't the currently logged in user");
   }
-  videoMetadata.thumbnailURL = dataURL
+
+  const ext = mediaTypeToExt(mediaType);
+  const filename = `${videoId}${ext}`;
+
+  const assetDiskPath = getAssetDiskPath(cfg, filename);
+  await Bun.write(assetDiskPath, imageData);
+
+  const urlPath = getAssetURL(cfg, filename);
+  videoMetadata.thumbnailURL = urlPath;
   updateVideo(cfg.db, videoMetadata);
 
   return respondWithJSON(200, videoMetadata);
