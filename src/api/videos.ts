@@ -6,6 +6,7 @@ import { getVideo, updateVideo } from "../db/videos";
 import { getAssetDiskPath, mediaTypeToExt } from "./assets";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { respondWithJSON } from "./json";
+import { getVideoAspectRatio } from "./video-meta";
 
 const MAX_UPLOAD_SIZE = 1 << 30;
 const VIDEO_WEB_KEY = "video";
@@ -47,14 +48,18 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   const ext = mediaTypeToExt(mediaType);
   const filename = TEMP_VIDEO_NAME + ext;
 
-  const assetDiskPath = getAssetDiskPath(cfg, filename);
-  let tempFile;
+  const tempFilePath = getAssetDiskPath(cfg, filename);
+  let aspectRatio;
   let s3Key;
-  try {
-    await Bun.write(assetDiskPath, videoData);
-    tempFile = Bun.file(assetDiskPath);
 
-    s3Key = `${randomBytes(32).toString("base64url")}${ext}`
+  let tempFile;
+  try {
+    await Bun.write(tempFilePath, videoData);
+    tempFile = Bun.file(tempFilePath);
+
+    aspectRatio = await getVideoAspectRatio(tempFilePath);
+    s3Key = `${aspectRatio}/${randomBytes(32).toString("base64url")}${ext}`;
+
     const s3File = cfg.s3Client.file(s3Key);
     await s3File.write(
       videoData,
