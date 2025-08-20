@@ -1,8 +1,8 @@
 import { ensureAssetsDir } from "./api/assets";
 import { handlerLogin, handlerRefresh, handlerRevoke } from "./api/auth";
 import {
-  cacheMiddleware,
   errorHandlingMiddleware,
+  noCacheMiddleware,
   withConfig,
 } from "./api/middleware";
 import { handlerReset } from "./api/reset";
@@ -61,7 +61,7 @@ Bun.serve({
     const path = url.pathname;
 
     if (path.startsWith("/assets")) {
-      return cacheMiddleware(() =>
+      return noCacheMiddleware(() =>
         serveStaticFile(path.replace("/assets/", ""), cfg.assetsRoot)
       )(req);
     }
