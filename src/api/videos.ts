@@ -6,7 +6,7 @@ import { getVideo, updateVideo } from "../db/videos";
 import { getAssetDiskPath, mediaTypeToExt } from "./assets";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import { respondWithJSON } from "./json";
-import { getVideoAspectRatio } from "./video-meta";
+import { getVideoAspectRatio, processVideoForFastStart } from "./video-meta";
 
 const MAX_UPLOAD_SIZE = 1 << 30;
 const VIDEO_WEB_KEY = "video";
@@ -53,22 +53,31 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
   let s3Key;
 
   let tempFile;
+  let processedFile;
   try {
     await Bun.write(tempFilePath, videoData);
     tempFile = Bun.file(tempFilePath);
+
+    const processedFilePath = await processVideoForFastStart(tempFilePath);
+    processedFile = Bun.file(processedFilePath)
 
     aspectRatio = await getVideoAspectRatio(tempFilePath);
     s3Key = `${aspectRatio}/${randomBytes(32).toString("base64url")}${ext}`;
 
     const s3File = cfg.s3Client.file(s3Key);
     await s3File.write(
-      videoData,
+      processedFile,
       {
         type: mediaType,
       }
     );
   } finally {
-    tempFile!.delete();
+    if (tempFile) {
+      tempFile.delete();
+    }
+    if (processedFile) {
+      processedFile.delete();
+    }
   }
 
   const s3URL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${s3Key}`

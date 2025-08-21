@@ -60,6 +60,12 @@ export async function handlerVideoGet(cfg: ApiConfig, req: BunRequest) {
 }
 
 export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
+  // const buf = require('fs').readFileSync('start.mp4');
+  // // Check if "moov" is present as a plain substring:
+  // console.log(buf.includes(Buffer.from('moov'))); // Should print true if found
+  // console.log(buf.toString().includes('moov'));   // See if text includes it (sometimes this fails if nulls break the text)
+  // [...buf].forEach((b, i) => console.log(i, b, String.fromCharCode(b)));
+
   const token = getBearerToken(req.headers);
   const userID = validateJWT(token, cfg.jwtSecret);
 
@@ -108,3 +114,40 @@ export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
       : "other";
 }
 
+const outputExtension = ".processed"
+export async function processVideoForFastStart(inputFilePath: string) {
+  const outputPath = inputFilePath + outputExtension;
+  const cmd = [
+    "ffmpeg",
+    "-i",
+    inputFilePath,
+    "-movflags",
+    "faststart",
+    "-map_metadata",
+    "0",
+    "-codec",
+    "copy",
+    "-f",
+    "mp4",
+    outputPath
+  ];
+  const process = Bun.spawn(
+    cmd,
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+
+  const outputText = await new Response(process.stdout).text();
+  const errorText = await new Response(process.stderr).text();
+  const exitCode = await process.exited;
+  if (exitCode !== 0) {
+    throw new Error(`ffprobe error: ${errorText}`);
+  }
+  console.log("ffmpeg exit code:", exitCode)
+  console.log("ffmpeg error output:", errorText)
+  console.log("Processed file size:", Bun.file(outputPath).size)
+
+  return outputPath;
+}
